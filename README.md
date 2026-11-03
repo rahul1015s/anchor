@@ -89,7 +89,7 @@ test/          engine tests
 - Website blocking works only in browsers where the extension is installed. Firefox isn't supported yet.
 - The app blocker matches **program names**; Flatpak/Snap apps usually work, but check by adding the app and testing.
 - "Mute notifications" uses GNOME settings; other desktops just skip it.
-- The compact window is kept on top via XWayland; on some compositors "always on top" may not apply.
+- On Wayland (GNOME) an app can't force itself above other windows. The small session window is a normal window: right-click its title bar (or press Alt+Space) and choose **Always on Top** if you want it to stay visible.
 
 ## License
 

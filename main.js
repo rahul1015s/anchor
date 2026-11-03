@@ -3,8 +3,6 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { createCore } = require('./core');
 
-// Run through XWayland so "always on top" works for the compact session window (Wayland ignores it).
-app.commandLine.appendSwitch('ozone-platform', 'x11');
 app.setDesktopName('anchor.desktop');
 
 let win = null, core = null, normalBounds = null, compact = false;

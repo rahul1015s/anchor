@@ -257,3 +257,15 @@ test('exportExtension writes a private config', () => {
   const cfg = JSON.parse(fs.readFileSync(path.join(dest, 'config.json'), 'utf8'));
   assert.equal(cfg.token, core.getToken()); assert.ok(cfg.ports.length >= 1);
 });
+
+test('extension manifest works for Chrome and Firefox', () => {
+  const m = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'extension', 'manifest.json'), 'utf8'));
+  assert.equal(m.manifest_version, 3);
+  assert.equal(m.background.service_worker, 'background.js', 'Chrome needs a service worker');
+  assert.deepEqual(m.background.scripts, ['background.js'], 'Firefox needs background.scripts');
+  assert.ok(m.browser_specific_settings.gecko.id, 'Firefox needs an add-on id');
+  assert.ok(m.permissions.includes('webNavigation'));
+  for (const f of ['background.js', 'blocked.html', 'blocked.js', 'blocked.css', 'icons/icon-48.png']) assert.ok(fs.existsSync(path.join(__dirname, '..', 'extension', f)), f);
+  const bg = fs.readFileSync(path.join(__dirname, '..', 'extension', 'background.js'), 'utf8');
+  assert.ok(!/\bchrome\.(tabs|runtime|webNavigation|alarms)/.test(bg), 'use the cross-browser `ext` alias, not chrome.* directly');
+});

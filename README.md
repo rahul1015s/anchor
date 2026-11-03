@@ -48,15 +48,28 @@ npx github:rahul1015s/anchor uninstall --purge   # delete them too
 
 ### Connect the browser extension (needed for website blocking, ~2 minutes)
 
-Works in Chrome, Brave, Edge and Chromium.
+Install it in **every browser you use**. Chrome, Brave, Edge, Chromium and Firefox (128+) are supported.
+Open **Anchor → Settings → Browser extension** for the same steps with your real folder path and buttons.
 
-1. Open **Anchor → Settings → Browser extension** (it shows the folder path and has *Open Chrome extensions page*, *Copy folder path* and *Show folder* buttons).
-2. In Chrome open `chrome://extensions` and switch on **Developer mode**.
-3. Click **Load unpacked** and pick the folder shown in Anchor (`~/.config/Anchor/extension`).
-4. Anchor shows **Connected** within a minute.
+**Chrome / Brave / Edge / Chromium**
 
-The extension only talks to Anchor on `127.0.0.1` using a private token generated on your machine, and asks for
-the minimum permissions (`webNavigation`, `tabs`, `alarms`). **If Anchor isn't running, the extension allows everything**, so you can never be locked out of the web.
+1. Open `chrome://extensions` and switch on **Developer mode**.
+2. **Load unpacked** → choose `~/.config/Anchor/extension` (a shortcut `~/Anchor-extension` is not created automatically; make one with `ln -s ~/.config/Anchor/extension ~/Anchor-extension` if you want it visible in your file manager).
+
+**Firefox**
+
+1. Open `about:debugging#/runtime/this-firefox`.
+2. **Load Temporary Add-on…** → pick `manifest.json` inside `~/.config/Anchor/extension`.
+3. Release Firefox **forgets temporary add-ons when it restarts**. To make it permanent, sign it once with Mozilla (free, unlisted):
+
+   ```bash
+   npx web-ext sign --channel=unlisted --source-dir ~/.config/Anchor/extension \
+     --api-key=YOUR_KEY --api-secret=YOUR_SECRET     # keys: addons.mozilla.org/developers/addon/api/key/
+   ```
+   then open the generated `.xpi` in Firefox. The signed file contains your private connection key, so don't share it.
+   (Firefox Developer Edition / Nightly / ESR can instead allow unsigned add-ons permanently via `xpinstall.signatures.required = false`.)
+
+Anchor shows **Connected** within a minute. The extension only talks to Anchor on `127.0.0.1` using a private token generated on your machine, and asks for the minimum permissions (`webNavigation`, `tabs`, `alarms`). **If Anchor isn't running, the extension allows everything**, so you can never be locked out of the web.
 
 > Anchor writes a fresh copy of the extension to `~/.config/Anchor/extension` every time it starts. Load that folder (not the one in the repo) so the token matches.
 
@@ -86,7 +99,7 @@ test/          engine tests
 ## Honest limits
 
 - It's a **self-control aid, not a security tool.** You can still defeat it from outside (kill the app from a terminal, use another browser without the extension, disable the extension). It's built to stop impulses, not determined you.
-- Website blocking works only in browsers where the extension is installed. Firefox isn't supported yet.
+- Website blocking works only in browsers where the extension is installed (Chrome-family and Firefox). On release Firefox the add-on needs re-loading after each restart unless you sign it (see above).
 - The app blocker matches **program names**; Flatpak/Snap apps usually work, but check by adding the app and testing.
 - "Mute notifications" uses GNOME settings; other desktops just skip it.
 - On Wayland (GNOME) an app can't force itself above other windows. The small session window is a normal window: right-click its title bar (or press Alt+Space) and choose **Always on Top** if you want it to stay visible.

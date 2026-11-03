@@ -1,6 +1,7 @@
 const q = new URLSearchParams(location.search), host = q.get('host') || '', target = q.get('url') || '';
 const $ = (id) => document.getElementById(id);
-const ask = (path, method, body) => new Promise((res) => chrome.runtime.sendMessage({ anchor: true, path, method, body }, (r) => res(r || { status: 0, json: { error: 'Anchor app is not running' } })));
+const ext = typeof browser !== 'undefined' ? browser : chrome;
+const ask = (path, method, body) => ext.runtime.sendMessage({ anchor: true, path, method, body }).then((r) => r || { status: 0, json: { error: 'Anchor app is not running' } }).catch(() => ({ status: 0, json: { error: 'Anchor app is not running' } }));
 $('host').textContent = host; $('host2').textContent = host;
 const fmt = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
 let readyAt = 0, st = null;
@@ -17,7 +18,7 @@ async function refresh() {
 }
 function go() { if (target) location.replace(target); }
 
-$('back').onclick = () => { if (history.length > 1) history.back(); else chrome.tabs.create({}).then(() => window.close()).catch(() => window.close()); };
+$('back').onclick = () => { if (history.length > 1) history.back(); else ext.tabs.create({}).then(() => window.close()).catch(() => window.close()); };
 $('need').onclick = async () => {
   $('cool').hidden = false; $('need').disabled = true;
   const r = await ask('/unlock/request', 'POST', { host });

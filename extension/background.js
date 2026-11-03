@@ -1,9 +1,10 @@
-// Anchor extension: asks the Anchor desktop app (127.0.0.1) whether a site is blocked and redirects to the block page.
-// If the app is not running, everything is allowed (fail open) so you are never locked out of the web.
+// Anchor extension (Chrome, Brave, Edge, Chromium and Firefox): asks the Anchor desktop app (127.0.0.1) whether a site is blocked
+// and redirects to the block page. If the app is not running, everything is allowed (fail open).
+const ext = typeof browser !== 'undefined' ? browser : chrome; // promise-based API in both browsers
 let cfg = null, port = null, state = null, stateAt = 0;
 
 async function loadCfg() {
-  if (!cfg) cfg = await (await fetch(chrome.runtime.getURL('config.json'), { cache: 'no-store' })).json();
+  if (!cfg) cfg = await (await fetch(ext.runtime.getURL('config.json'), { cache: 'no-store' })).json();
   return cfg;
 }
 async function api(path, method = 'GET', body) {
@@ -43,27 +44,27 @@ async function check(tabId, url) {
   const st = await getState();
   if (!decide(st, host)) return;
   api('/attempt', 'POST', { host });
-  chrome.tabs.update(tabId, { url: chrome.runtime.getURL('blocked.html') + '?host=' + encodeURIComponent(host) + '&url=' + encodeURIComponent(url) }).catch(() => {});
+  ext.tabs.update(tabId, { url: ext.runtime.getURL('blocked.html') + '?host=' + encodeURIComponent(host) + '&url=' + encodeURIComponent(url) }).catch(() => {});
 }
 
-chrome.webNavigation.onBeforeNavigate.addListener((d) => { if (d.frameId === 0) check(d.tabId, d.url); }, { url: [{ schemes: ['http', 'https'] }] });
-chrome.webNavigation.onHistoryStateUpdated.addListener((d) => { if (d.frameId === 0) check(d.tabId, d.url); }, { url: [{ schemes: ['http', 'https'] }] });
-chrome.tabs.onActivated.addListener(async ({ tabId }) => { try { const t = await chrome.tabs.get(tabId); check(tabId, t.url); } catch {} });
+ext.webNavigation.onBeforeNavigate.addListener((d) => { if (d.frameId === 0) check(d.tabId, d.url); }, { url: [{ schemes: ['http', 'https'] }] });
+ext.webNavigation.onHistoryStateUpdated.addListener((d) => { if (d.frameId === 0) check(d.tabId, d.url); }, { url: [{ schemes: ['http', 'https'] }] });
+ext.tabs.onActivated.addListener(async ({ tabId }) => { try { const t = await ext.tabs.get(tabId); check(tabId, t.url); } catch {} });
 
 // Heartbeat + sweep: redirect tabs that were already open on a blocked site when the session started.
 async function sweep() {
   const st = await getState(true);
   if (!st || !st.active) return;
-  for (const t of await chrome.tabs.query({})) if (t.url) check(t.id, t.url);
+  for (const t of await ext.tabs.query({})) if (t.url) check(t.id, t.url);
 }
-chrome.alarms.create('anchor-sweep', { periodInMinutes: 0.5 });
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'anchor-sweep') sweep(); });
-chrome.runtime.onStartup.addListener(sweep);
-chrome.runtime.onInstalled.addListener(sweep);
+ext.alarms.create('anchor-sweep', { periodInMinutes: 0.5 });
+ext.alarms.onAlarm.addListener((a) => { if (a.name === 'anchor-sweep') sweep(); });
+ext.runtime.onStartup.addListener(sweep);
+ext.runtime.onInstalled.addListener(sweep);
 
 // block page -> background: proxy API calls (keeps the token inside the extension)
-chrome.runtime.onMessage.addListener((msg, _s, reply) => {
+ext.runtime.onMessage.addListener((msg, _s, reply) => {
   if (!msg || msg.anchor !== true) return;
   api(msg.path, msg.method || 'GET', msg.body).then((r) => reply(r || { status: 0, json: { error: 'Anchor app is not running' } }));
-  return true;
+  return true; // keep the channel open for the async reply (works in Chrome and Firefox)
 });

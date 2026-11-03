@@ -71,11 +71,17 @@ else {
     ipcMain.handle('settings:set', wrap((p) => core.setSettings(p)));
     ipcMain.handle('history:list', () => core.history().slice().reverse());
     ipcMain.handle('ui:modal', (_e, open) => resizeForModal(open));
-    ipcMain.handle('ext:info', () => ({ dir: path.join(app.getPath('userData'), 'extension'), port: core.getPort(), connected: core.snapshot().extensionConnected }));
+    ipcMain.handle('ext:info', () => {
+      let def = ''; try { def = require('child_process').execFileSync('xdg-settings', ['get', 'default-web-browser'], { encoding: 'utf8', timeout: 2000 }).trim().toLowerCase(); } catch {}
+      return { dir: path.join(app.getPath('userData'), 'extension'), port: core.getPort(), connected: core.snapshot().extensionConnected, defaultBrowser: def };
+    });
     ipcMain.handle('ext:reveal', () => shell.showItemInFolder(path.join(app.getPath('userData'), 'extension', 'manifest.json')));
     ipcMain.handle('ext:copy', () => { clipboard.writeText(path.join(app.getPath('userData'), 'extension')); return true; });
     ipcMain.handle('ext:openChrome', () => {
       try { const p = spawn('google-chrome', ['chrome://extensions'], { detached: true, stdio: 'ignore' }); p.on('error', () => {}); p.unref(); return true; } catch { return false; }
+    });
+    ipcMain.handle('ext:openFirefox', () => {
+      try { const p = spawn('firefox', ['about:debugging#/runtime/this-firefox'], { detached: true, stdio: 'ignore' }); p.on('error', () => {}); p.unref(); return true; } catch { return false; }
     });
     createWindow();
   });

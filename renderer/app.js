@@ -9,6 +9,7 @@ let tab = 'focus';                  // focus | rules | history | settings
 let summary = null;                 // shown after a session ends
 let skew = 0;                       // engine clock - local clock
 let draft = { goal: '', minutes: null, mode: null };
+let extBrowser = null;              // 'chrome' | 'firefox' (Settings tab)
 let viewKey = '';
 const nowMs = () => Date.now() + skew;
 
@@ -146,6 +147,7 @@ async function viewHistory(v) {
 // ---------- settings ----------
 async function viewSettings(v) {
   const st = S.settings, info = await api.extInfo();
+  if (!extBrowser) extBrowser = /firefox/.test(info.defaultBrowser || '') ? 'firefox' : 'chrome';
   const num = (id, label, sub, val, min, max) => `<div class="setting"><div>${label}<small>${sub}</small></div><input type="number" class="num" id="${id}" min="${min}" max="${max}" value="${val}"></div>`;
   v.innerHTML = `
     <div class="card"><h3>Session rules</h3>
@@ -155,16 +157,31 @@ async function viewSettings(v) {
       ${num('defaultMinutes', 'Default session length (minutes)', '', st.defaultMinutes, 5, 240)}
       <div class="setting"><div>Mute notifications during sessions<small>Uses GNOME “Do Not Disturb”. Restored when the session ends.</small></div>
         <div class="seg"><button data-dnd="1" class="${st.dnd ? 'on' : ''}">On</button><button data-dnd="0" class="${st.dnd ? '' : 'on'}">Off</button></div></div></div>
-    <div class="card"><div class="row spread"><h3>Browser extension (Chrome)</h3><span class="pill ${info.connected ? 'ok' : 'warn'}"><span class="dot"></span>${info.connected ? 'Connected' : 'Not connected'}</span></div>
-      <p class="hint">Needed to block websites. Works in Chrome, Brave, Edge and Chromium. It only talks to this app on your computer.</p>
-      <ol class="steps"><li>Open <b>chrome://extensions</b> in Chrome and turn on <b>Developer mode</b> (top right).</li>
-        <li>Click <b>Load unpacked</b> and choose this folder:<br><code>${esc(info.dir)}</code></li>
-        <li>That's it. This page shows <b>Connected</b> within a minute.</li></ol>
-      <div class="row" style="margin-top:14px"><button class="btn ghost sm" id="openChrome">Open Chrome extensions page</button><button class="btn ghost sm" id="copyDir">Copy folder path</button><button class="btn ghost sm" id="revealDir">Show folder</button></div></div>
+    <div class="card"><div class="row spread"><h3>Browser extension</h3><span class="pill ${info.connected ? 'ok' : 'warn'}"><span class="dot"></span>${info.connected ? 'Connected' : 'Not connected'}</span></div>
+      <p class="hint">Needed to block websites. Install it in every browser you use. It only talks to this app on your computer.</p>
+      <div class="seg" style="margin:12px 0 4px"><button data-br="chrome" class="${extBrowser === 'chrome' ? 'on' : ''}">Chrome · Brave · Edge</button><button data-br="firefox" class="${extBrowser === 'firefox' ? 'on' : ''}">Firefox</button></div>
+      ${extBrowser === 'chrome' ? `
+      <ol class="steps"><li>Open <b>chrome://extensions</b> and turn on <b>Developer mode</b> (top right).</li>
+        <li>Click <b>Load unpacked</b> and choose this folder:<br><code>${esc(info.dir)}</code><br><span class="hint">Shortcut in your home folder: <code>Anchor-extension</code></span></li>
+        <li>This page shows <b>Connected</b> within a minute.</li></ol>
+      <div class="row" style="margin-top:14px"><button class="btn ghost sm" id="openChrome">Open Chrome extensions page</button><button class="btn ghost sm" id="copyDir">Copy folder path</button><button class="btn ghost sm" id="revealDir">Show folder</button></div>`
+      : `
+      <ol class="steps"><li>Click <b>Open Firefox add-on page</b> below (or open <b>about:debugging#/runtime/this-firefox</b>).</li>
+        <li>Click <b>Load Temporary Add-on…</b> and choose <b>manifest.json</b> inside:<br><code>${esc(info.dir)}</code></li>
+        <li>This page shows <b>Connected</b> within a minute.</li></ol>
+      <p class="hint"><b>Firefox forgets temporary add-ons when it restarts</b>, so repeat step 2 after restarting Firefox, or make it permanent (free, one time):</p>
+      <details><summary>Make it permanent with a Mozilla signature</summary>
+        <ol class="steps"><li>Create API keys at <code>addons.mozilla.org/developers/addon/api/key/</code> (needs a free Mozilla account).</li>
+          <li>In a terminal run:<br><code>npx web-ext sign --channel=unlisted --source-dir "${esc(info.dir)}" --api-key=YOUR_KEY --api-secret=YOUR_SECRET</code></li>
+          <li>Open the <code>.xpi</code> it creates in Firefox (drag it onto the window) and accept.</li></ol>
+        <p class="hint">The signed file contains this app's private connection key, so keep it to yourself. Needs Firefox 128 or newer.</p></details>
+      <div class="row" style="margin-top:14px"><button class="btn ghost sm" id="openFirefox">Open Firefox add-on page</button><button class="btn ghost sm" id="copyDir">Copy folder path</button><button class="btn ghost sm" id="revealDir">Show folder</button></div>`}</div>
     <div class="card"><h3>About</h3><p class="hint">Anchor is a self-control aid, not a security tool: it helps you resist impulses, but you can still quit it from outside (for example with a terminal). Everything stays on this computer.</p></div>`;
   ['cooldownSec', 'maxBreaks', 'breakMin', 'defaultMinutes'].forEach((id) => ($(id).onchange = async (e) => { const r = await api.setSettings({ [id]: +e.target.value }); if (!r.ok) toast(r.error, true); else S.settings = r.data; }));
   v.querySelectorAll('[data-dnd]').forEach((b) => (b.onclick = async () => { const r = await api.setSettings({ dnd: b.dataset.dnd === '1' }); if (r.ok) { S.settings = r.data; render(); } }));
-  $('openChrome').onclick = async () => { if (!(await api.extOpenChrome())) toast('Could not start Chrome – open chrome://extensions yourself.', true); };
+  v.querySelectorAll('[data-br]').forEach((b) => (b.onclick = () => { extBrowser = b.dataset.br; render(); }));
+  const oc = $('openChrome'); if (oc) oc.onclick = async () => { if (!(await api.extOpenChrome())) toast('Could not start Chrome – open chrome://extensions yourself.', true); };
+  const of = $('openFirefox'); if (of) of.onclick = async () => { if (!(await api.extOpenFirefox())) toast('Could not start Firefox – open about:debugging#/runtime/this-firefox yourself.', true); };
   $('copyDir').onclick = async () => { await api.extCopy(); toast('Folder path copied'); };
   $('revealDir').onclick = () => api.extReveal();
 }

@@ -1,6 +1,11 @@
 // Anchor extension (Chrome, Brave, Edge, Chromium and Firefox): asks the Anchor desktop app (127.0.0.1) whether a site is blocked
 // and redirects to the block page. If the app is not running, everything is allowed (fail open).
 const ext = typeof browser !== 'undefined' ? browser : chrome; // promise-based API in both browsers
+if (typeof importScripts === 'function') importScripts('adult.js'); // Chrome service worker; Firefox loads it via manifest "scripts"
+// Adult-site filter: ON by default. Only an explicit "off" from the Anchor app (after its long wait) turns it off,
+// and the last known setting is remembered so the filter keeps working even if the app is closed.
+let adultOn = true;
+ext.storage.local.get('adultOn').then((v) => { if (v && v.adultOn === false) adultOn = false; }).catch(() => {});
 let cfg = null, port = null, state = null, stateAt = 0;
 
 async function loadCfg() {
@@ -25,26 +30,30 @@ async function getState(force) {
   if (!force && state && Date.now() - stateAt < 2000) return state;
   const r = await api('/state');
   state = r && r.status === 200 ? r.json : null; stateAt = Date.now();
+  if (state && typeof state.adultFilter === 'boolean') { adultOn = state.adultFilter; ext.storage.local.set({ adultOn }).catch(() => {}); }
   return state;
 }
 const hostOf = (u) => { try { return new URL(u).hostname.toLowerCase().replace(/^www\./, ''); } catch { return null; } };
 const matches = (h, e) => h === e || h.endsWith('.' + e);
 
+// returns 'adult' (always-on filter), 'site' (session rule) or null
 function decide(st, host) {
-  if (!st || !st.active || st.onBreak || !host) return false;
-  if (host === 'localhost' || host === '127.0.0.1') return false;
+  if (!host || host === 'localhost' || host === '127.0.0.1') return null;
+  if ((st ? st.adultFilter !== false : adultOn) && AnchorAdult.isAdult(host)) return 'adult';
+  if (!st || !st.active || st.onBreak) return null;
   const now = Date.now();
-  if ((st.unlocks || []).some((u) => u.until > now && matches(host, u.target))) return false;
-  if (st.mode === 'allowlist') return !st.allow.some((e) => matches(host, e));
-  return st.sites.some((e) => matches(host, e));
+  if ((st.unlocks || []).some((u) => u.until > now && matches(host, u.target))) return null;
+  if (st.mode === 'allowlist') return st.allow.some((e) => matches(host, e)) ? null : 'site';
+  return st.sites.some((e) => matches(host, e)) ? 'site' : null;
 }
 async function check(tabId, url) {
   if (!/^https?:/i.test(url || '')) return;
   const host = hostOf(url); if (!host) return;
   const st = await getState();
-  if (!decide(st, host)) return;
+  const why = decide(st, host);
+  if (!why) return;
   api('/attempt', 'POST', { host });
-  ext.tabs.update(tabId, { url: ext.runtime.getURL('blocked.html') + '?host=' + encodeURIComponent(host) + '&url=' + encodeURIComponent(url) }).catch(() => {});
+  ext.tabs.update(tabId, { url: ext.runtime.getURL('blocked.html') + '?host=' + encodeURIComponent(host) + '&url=' + encodeURIComponent(url) + (why === 'adult' ? '&adult=1' : '') }).catch(() => {});
 }
 
 ext.webNavigation.onBeforeNavigate.addListener((d) => { if (d.frameId === 0) check(d.tabId, d.url); }, { url: [{ schemes: ['http', 'https'] }] });
@@ -54,7 +63,7 @@ ext.tabs.onActivated.addListener(async ({ tabId }) => { try { const t = await ex
 // Heartbeat + sweep: redirect tabs that were already open on a blocked site when the session started.
 async function sweep() {
   const st = await getState(true);
-  if (!st || !st.active) return;
+  if (st ? !(st.active || st.adultFilter !== false) : !adultOn) return;
   for (const t of await ext.tabs.query({})) if (t.url) check(t.id, t.url);
 }
 ext.alarms.create('anchor-sweep', { periodInMinutes: 0.5 });

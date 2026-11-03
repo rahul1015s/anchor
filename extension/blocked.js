@@ -1,4 +1,4 @@
-const q = new URLSearchParams(location.search), host = q.get('host') || '', target = q.get('url') || '';
+const q = new URLSearchParams(location.search), host = q.get('host') || '', target = q.get('url') || '', isAdult = q.get('adult') === '1';
 const $ = (id) => document.getElementById(id);
 const ext = typeof browser !== 'undefined' ? browser : chrome;
 const ask = (path, method, body) => ext.runtime.sendMessage({ anchor: true, path, method, body }).then((r) => r || { status: 0, json: { error: 'Anchor app is not running' } }).catch(() => ({ status: 0, json: { error: 'Anchor app is not running' } }));
@@ -6,8 +6,13 @@ $('host').textContent = host; $('host2').textContent = host;
 const fmt = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
 let readyAt = 0, st = null;
 
+if (isAdult) {
+  for (const id of ['goalp', 'leftp', 'need']) $(id).hidden = true;
+  $('adultnote').hidden = false; $('blockedword').textContent = 'is blocked'; document.title = 'Blocked – Anchor';
+}
 async function refresh() {
   const r = await ask('/state');
+  if (isAdult) { if (r.status === 200 && r.json.adultFilter === false) go(); return; } // only an explicit "filter off" lets you through
   if (r.status !== 200) { $('offline').hidden = false; return; }
   $('offline').hidden = true; st = r.json;
   if (!st.active || st.onBreak) return go(); // session over / break => let them through

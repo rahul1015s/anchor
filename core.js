@@ -6,6 +6,7 @@ const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
 const EventEmitter = require('events');
+const ADULT = require('./extension/adult.js');
 const { execFile, execFileSync } = require('child_process');
 
 const PORTS = [47821, 47822, 47823, 47824, 47825];
@@ -23,6 +24,9 @@ const DEFAULTS = {
   maxBreaks: 2,
   defaultMinutes: 50,
   dnd: true,
+  // always-on adult/porn/erotic site filter (browser extension). Turning it off takes filterWaitSec + a written reason.
+  adultFilter: true,
+  filterWaitSec: 300,
 };
 
 // Names we never kill, whatever the user types (editors, terminals, browsers, system).
@@ -92,7 +96,7 @@ function createCore(opts) {
   fs.mkdirSync(dataDir, { recursive: true });
   const dnd = opts.dnd || defaultDnd(dataDir);
   const bus = new EventEmitter();
-  const files = { settings: path.join(dataDir, 'settings.json'), state: path.join(dataDir, 'state.json'), history: path.join(dataDir, 'sessions.json') };
+  const files = { settings: path.join(dataDir, 'settings.json'), state: path.join(dataDir, 'state.json'), history: path.join(dataDir, 'sessions.json'), filterlog: path.join(dataDir, 'filterlog.json') };
 
   const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
   const writeJson = (f, v) => { fs.writeFileSync(f + '.tmp', JSON.stringify(v, null, 2)); fs.renameSync(f + '.tmp', f); };
@@ -105,6 +109,8 @@ function createCore(opts) {
   const clamp = (v, lo, hi, d) => (Number.isFinite(+v) ? Math.min(hi, Math.max(lo, Math.round(+v))) : d);
 
   let session = readJson(files.state, null);
+  let filterLog = readJson(files.filterlog, []);
+  let filterPending = null;
   let extSeen = 0, lastBlockedAt = {}, killed = {}, server = null, apiPort = 0, timer = null;
 
   const publicSettings = () => { const { token, ...rest } = settings; return rest; };
@@ -121,6 +127,15 @@ function createCore(opts) {
     if ('maxBreaks' in patch) n.maxBreaks = clamp(patch.maxBreaks, 0, 5, 2);
     if ('defaultMinutes' in patch) n.defaultMinutes = clamp(patch.defaultMinutes, 5, 240, 50);
     if ('dnd' in patch) n.dnd = !!patch.dnd;
+    if ('filterWaitSec' in patch) {
+      const v = clamp(patch.filterWaitSec, 60, 1800, 300);
+      if (settings.adultFilter && v < settings.filterWaitSec) throw new Error('The filter wait can only be raised while the filter is on.');
+      n.filterWaitSec = v;
+    }
+    if ('adultFilter' in patch) {
+      if (settings.adultFilter && !patch.adultFilter) throw new Error('Use the wait to turn the adult filter off.');
+      n.adultFilter = !!patch.adultFilter;
+    }
     settings = n; writeJson(files.settings, settings); bus.emit('change');
     return publicSettings();
   }
@@ -188,7 +203,32 @@ function createCore(opts) {
   }
 
   // ---------- cooldown: request -> wait -> confirm with a written reason ----------
+  // ---------- adult filter: works with or without a session ----------
+  function logFilter(kind, reason) { filterLog = [...filterLog, { at: now(), kind, reason }].slice(-100); writeJson(files.filterlog, filterLog); }
+  function requestFilterOff() {
+    if (!settings.adultFilter) throw new Error('The filter is already off.');
+    const t = now(), readyAt = t + settings.filterWaitSec * 1000;
+    if (!filterPending || filterPending.expires < t) filterPending = { readyAt, expires: readyAt + 10 * MIN };
+    return { key: 'filter:adult', target: 'adult', readyAt: filterPending.readyAt, cooldownSec: settings.filterWaitSec, serverNow: t };
+  }
+  function confirmFilterOff(reason) {
+    const t = now();
+    if (!filterPending || filterPending.expires < t) throw new Error('Start the wait first.');
+    if (t < filterPending.readyAt) throw new Error(`Wait ${Math.ceil((filterPending.readyAt - t) / 1000)} more seconds.`);
+    reason = String(reason || '').trim().slice(0, 300);
+    if (reason.length < 20) throw new Error('Write a real reason (at least 20 characters).');
+    filterPending = null; settings = { ...settings, adultFilter: false }; writeJson(files.settings, settings);
+    logFilter('off', reason); bus.emit('change');
+  }
+  /** Turning the filter back on is always instant. */
+  function turnFilterOn() {
+    if (settings.adultFilter) return;
+    settings = { ...settings, adultFilter: true }; writeJson(files.settings, settings); filterPending = null;
+    logFilter('on', ''); bus.emit('change');
+  }
+
   function requestUnlock({ type, target }) {
+    if (type === 'filter') return requestFilterOff();
     if (!session) throw new Error('No session is running.');
     if (!['site', 'app', 'end'].includes(type)) throw new Error('Bad request.');
     target = type === 'site' ? siteUnlockTarget(String(target || '')) : type === 'app' ? String(target || '').toLowerCase() : 'session';
@@ -200,6 +240,7 @@ function createCore(opts) {
     return { key, target, readyAt: session.pending[key].readyAt, cooldownSec: session.cooldownSec, serverNow: t };
   }
   function confirmUnlock({ type, target, reason, minutes }) {
+    if (type === 'filter') { confirmFilterOff(reason); return { ok: true }; }
     if (!session) throw new Error('No session is running.');
     target = type === 'site' ? siteUnlockTarget(String(target || '')) : type === 'app' ? String(target || '').toLowerCase() : 'session';
     const key = type + ':' + target, p = session.pending[key], t = now();
@@ -224,6 +265,7 @@ function createCore(opts) {
   // ---------- decisions ----------
   function siteDecision(hostIn) {
     const host = normalizeHost(hostIn);
+    if (host && host !== 'localhost' && host !== '127.0.0.1' && settings.adultFilter && ADULT.isAdult(host)) return { blocked: true, host, adult: true };
     if (!session || onBreak() || !host) return { blocked: false };
     if (host === 'localhost' || host === '127.0.0.1') return { blocked: false };
     if (unlocked('site', host)) return { blocked: false };
@@ -277,7 +319,7 @@ function createCore(opts) {
     const today = days[6];
     return { todayFocusMin: today.focusMin, todaySessions: h.filter((x) => x.startedAt >= day(0)).length, days, totalSessions: h.length, totalFocusMin: h.reduce((s, x) => s + x.focusMin, 0) };
   }
-  const snapshot = () => ({ now: now(), settings: publicSettings(), session: publicSession(), extensionConnected: now() - extSeen < 75000, apiPort, stats: stats() });
+  const snapshot = () => ({ filterLog: filterLog.slice(-20), now: now(), settings: publicSettings(), session: publicSession(), extensionConnected: now() - extSeen < 75000, apiPort, stats: stats() });
 
   // ---------- local API for the browser extension ----------
   function api(req, res) {
@@ -301,12 +343,12 @@ function createCore(opts) {
           extSeen = now(); bus.emit('ext');
           const s = session;
           return send(200, {
-            serverNow: now(), active: !!s, goal: s && s.goal, endsAt: s && s.endsAt, mode: s && s.mode, onBreak: onBreak(), breakUntil: s ? s.breaks.until : 0,
+            serverNow: now(), adultFilter: settings.adultFilter, active: !!s, goal: s && s.goal, endsAt: s && s.endsAt, mode: s && s.mode, onBreak: onBreak(), breakUntil: s ? s.breaks.until : 0,
             sites: s ? s.sites : [], allow: s ? s.allow : [], cooldownSec: s ? s.cooldownSec : 60,
             unlocks: s ? s.unlocks.filter((u) => u.type === 'site' && u.until > now()).map((u) => ({ target: u.target, until: u.until })) : [],
           });
         }
-        if (req.method === 'POST' && url === '/attempt') { const d = siteDecision(j.host); if (d.blocked) logAttempt('site', d.host); return send(200, { ok: true }); }
+        if (req.method === 'POST' && url === '/attempt') { const d = siteDecision(j.host); if (d.blocked && session) logAttempt('site', d.host); return send(200, { ok: true }); }
         if (req.method === 'POST' && url === '/unlock/request') return send(200, requestUnlock({ type: 'site', target: j.host }));
         if (req.method === 'POST' && url === '/unlock/confirm') return send(200, confirmUnlock({ type: 'site', target: j.host, reason: j.reason, minutes: j.minutes }));
         return send(404, { error: 'not found' });
@@ -343,7 +385,7 @@ function createCore(opts) {
 
   return Object.assign(bus, {
     start, stop, tick, snapshot, history, stats, exportExtension,
-    getSettings: publicSettings, setSettings, startSession, startBreak, endBreak, requestUnlock, confirmUnlock, siteDecision, logAttempt, scanApps,
+    getSettings: publicSettings, setSettings, requestFilterOff, confirmFilterOff, turnFilterOn, startSession, startBreak, endBreak, requestUnlock, confirmUnlock, siteDecision, logAttempt, scanApps,
     finishSession, hasSession: () => !!session, getToken: () => settings.token, getPort: () => apiPort,
     _session: () => session,
   });

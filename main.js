@@ -69,6 +69,7 @@ else {
     ipcMain.handle('unlock:request', wrap((o) => core.requestUnlock(o)));
     ipcMain.handle('unlock:confirm', wrap((o) => core.confirmUnlock(o)));
     ipcMain.handle('settings:set', wrap((p) => core.setSettings(p)));
+    ipcMain.handle('filter:on', wrap(() => core.turnFilterOn()));
     ipcMain.handle('history:list', () => core.history().slice().reverse());
     ipcMain.handle('ui:modal', (_e, open) => resizeForModal(open));
     ipcMain.handle('ext:info', () => {

@@ -140,3 +140,5 @@ body.session .toast{bottom:auto;top:12px}
 .sum .list h3{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
 .sum .list div{display:flex;justify-content:space-between;padding:4px 0}
 .sum .list q{color:var(--muted);font-size:13.5px;display:block;padding:3px 0}
+
+.flog{margin:12px 0 0;padding-left:18px;color:var(--muted);font-size:13px}

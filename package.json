@@ -1,7 +1,7 @@
 {
   "name": "anchor-focus",
   "productName": "Anchor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Focus guard for Linux: start a session with one goal and block distracting sites and apps until it ends",
   "main": "main.js",
   "scripts": {

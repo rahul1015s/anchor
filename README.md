@@ -21,6 +21,7 @@ Built with Electron + a small Chrome extension. Developed and tested on Fedora (
 
 ### Features
 
+- **Always-on adult site filter** – blocks porn and erotic sites in the browser **all the time** (not just during sessions), with the same domain rules as the Android app. It keeps blocking even if Anchor is closed. Turning it off takes a **5-minute wait (adjustable) and a written reason of at least 20 characters**, saved in the filter log; turning it on is instant. There is no per-site "I really need it" for these sites.
 - **Block list *or* allow-only mode** – block distracting sites, or block everything except the work sites you allow
 - **App blocker** – closes listed desktop apps; editors, terminals, browsers and system programs are protected and can't be added
 - **Cooldown with a written reason** for unlocking a site/app and for ending early (enforced by the app, not just the page)
@@ -73,10 +74,21 @@ Anchor shows **Connected** within a minute. The extension only talks to Anchor o
 
 > Anchor writes a fresh copy of the extension to `~/.config/Anchor/extension` every time it starts. Load that folder (not the one in the repo) so the token matches.
 
+## Adult site filter
+
+Needs the browser extension (above). On by default.
+
+- Blocks known adult sites, adult-only domains (`.xxx`, `.porn`, `.sex`, `.adult`…) and obvious keyword domains such as `free-porn-videos.net`. The rules are in `extension/adult.js`, shared by the app and the extension, and identical to the Android app's.
+- Works **without a session**, and during breaks.
+- If Anchor isn't running, the extension keeps the **last known setting**, and defaults to *on* for a fresh install. Only an explicit "off" from the app (after the wait) lets adult sites through.
+- Turn it off in **Settings → Adult site filter → Turn off…** The wait can be raised (up to 30 min) but not lowered while the filter is on.
+
+Limits: it works only in browsers where the extension is installed (so a browser without it, or a private window where you didn't allow the extension, isn't covered), it can't see inside mixed platforms (Reddit, X…), and anyone can remove the extension. For all-device coverage on a phone use the [Android app](https://github.com/rahul1015s/anchor-android) (DNS-level filter).
+
 ## Rules & settings
 
 - **Rules tab** – edit the blocklist, allowlist and app list (suggestions are one click). Locked while a session runs.
-- **Settings tab** – cooldown length (30–600 s), breaks per session and break length, default session length, notification muting.
+- **Settings tab** – adult filter, cooldown length (30–600 s), the adult-filter wait, breaks per session and break length, default session length, notification muting.
 
 ## Development
 
@@ -99,7 +111,7 @@ test/          engine tests
 ## Honest limits
 
 - It's a **self-control aid, not a security tool.** You can still defeat it from outside (kill the app from a terminal, use another browser without the extension, disable the extension). It's built to stop impulses, not determined you.
-- Website blocking works only in browsers where the extension is installed (Chrome-family and Firefox). On release Firefox the add-on needs re-loading after each restart unless you sign it (see above).
+- Website blocking works only in browsers where the extension is installed (Chrome-family and Firefox). The extension asks for the `storage` permission to remember the adult-filter setting. On release Firefox the add-on needs re-loading after each restart unless you sign it (see above).
 - The app blocker matches **program names**; Flatpak/Snap apps usually work, but check by adding the app and testing.
 - "Mute notifications" uses GNOME settings; other desktops just skip it.
 - On Wayland (GNOME) an app can't force itself above other windows. The small session window is a normal window: right-click its title bar (or press Alt+Space) and choose **Always on Top** if you want it to stay visible.

@@ -5,9 +5,10 @@
 <main>
   <img src="icons/icon-128.png" width="72" height="72" alt="">
   <p class="kicker">Anchor · focus session</p>
-  <h1><span id="host">this site</span> is blocked</h1>
-  <p class="goal">Your goal: <b id="goal">…</b></p>
-  <p class="left"><span id="left">--:--</span> left in this session</p>
+  <h1><span id="host">this site</span> <span id="blockedword">is blocked</span></h1>
+  <p class="goal" id="goalp">Your goal: <b id="goal">…</b></p>
+  <p class="left" id="leftp"><span id="left">--:--</span> left in this session</p>
+  <p id="adultnote" class="goal" hidden>This site is blocked by your <b>adult content filter</b>, which is always on.<br>To change that: Anchor app → Settings → Adult site filter (it makes you wait and explain why).</p>
   <div class="row"><button id="back" class="primary">Back to work</button><button id="need" class="ghost">I really need this site</button></div>
   <section id="cool" hidden>
     <p>Pause for a moment. Is this part of the goal above? You can unlock <b id="host2"></b> after the wait, with a reason.</p>

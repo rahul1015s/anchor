@@ -216,7 +216,7 @@ test('a running session survives a restart; an expired one is finalised', async 
 });
 
 async function call(port, token, method, url, body) {
-  const r = await fetch(`http://127.0.0.1:${port}${url}`, { method, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch(`http://127.0.0.1:${port}${url}`, { method, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Connection: 'close' }, body: body ? JSON.stringify(body) : undefined });
   return { status: r.status, json: await r.json() };
 }
 
@@ -262,10 +262,68 @@ test('extension manifest works for Chrome and Firefox', () => {
   const m = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'extension', 'manifest.json'), 'utf8'));
   assert.equal(m.manifest_version, 3);
   assert.equal(m.background.service_worker, 'background.js', 'Chrome needs a service worker');
-  assert.deepEqual(m.background.scripts, ['background.js'], 'Firefox needs background.scripts');
+  assert.deepEqual(m.background.scripts, ['adult.js', 'background.js'], 'Firefox needs background.scripts (adult.js first)');
+  assert.ok(m.permissions.includes('storage'), 'remembers the filter setting');
   assert.ok(m.browser_specific_settings.gecko.id, 'Firefox needs an add-on id');
   assert.ok(m.permissions.includes('webNavigation'));
-  for (const f of ['background.js', 'blocked.html', 'blocked.js', 'blocked.css', 'icons/icon-48.png']) assert.ok(fs.existsSync(path.join(__dirname, '..', 'extension', f)), f);
+  for (const f of ['adult.js', 'background.js', 'blocked.html', 'blocked.js', 'blocked.css', 'icons/icon-48.png']) assert.ok(fs.existsSync(path.join(__dirname, '..', 'extension', f)), f);
   const bg = fs.readFileSync(path.join(__dirname, '..', 'extension', 'background.js'), 'utf8');
   assert.ok(!/\bchrome\.(tabs|runtime|webNavigation|alarms)/.test(bg), 'use the cross-browser `ext` alias, not chrome.* directly');
+});
+
+test('adult filter: blocks adult sites with or without a session, never unlockable per-site', () => {
+  const { core } = mk();
+  assert.equal(core.getSettings().adultFilter, true);
+  assert.equal(core.hasSession(), false);
+  assert.equal(core.siteDecision('www.pornhub.com').blocked, true, 'blocked without any session');
+  assert.equal(core.siteDecision('www.pornhub.com').adult, true);
+  assert.equal(core.siteDecision('free-porn-videos.net').blocked, true, 'keyword domain');
+  assert.equal(core.siteDecision('github.com').blocked, false);
+  assert.equal(core.siteDecision('essex.ac.uk').blocked, false);
+  core.startSession({ goal: 'filter plus session', minutes: 30 });
+  core.startBreak();
+  assert.equal(core.siteDecision('pornhub.com').blocked, true, 'a break does not lift the adult filter');
+});
+
+test('adult filter: cannot be switched off directly or its wait lowered', () => {
+  const { core } = mk();
+  assert.throws(() => core.setSettings({ adultFilter: false }), /wait/i);
+  assert.throws(() => core.setSettings({ filterWaitSec: 60 }), /raised/i);
+  core.setSettings({ filterWaitSec: 600 });
+  assert.equal(core.getSettings().filterWaitSec, 600);
+});
+
+test('adult filter: switching off needs the long wait and a 20+ character reason, works without a session', () => {
+  const { core, adv } = mk();
+  assert.throws(() => core.confirmUnlock({ type: 'filter', reason: 'a perfectly long reason here' }), /wait first/i);
+  const t = core.requestUnlock({ type: 'filter', target: 'adult' });
+  assert.equal(t.cooldownSec, 300);
+  adv(299_000);
+  assert.throws(() => core.confirmUnlock({ type: 'filter', reason: 'a perfectly long reason here' }), /1 more/);
+  adv(2_000);
+  assert.throws(() => core.confirmUnlock({ type: 'filter', reason: 'too short' }), /20/);
+  assert.equal(core.getSettings().adultFilter, true);
+  core.confirmUnlock({ type: 'filter', reason: 'I need to research for my thesis on media' });
+  assert.equal(core.getSettings().adultFilter, false);
+  assert.equal(core.siteDecision('pornhub.com').blocked, false, 'filter is off now');
+  assert.equal(core.snapshot().filterLog.at(-1).kind, 'off');
+  core.turnFilterOn();
+  assert.equal(core.siteDecision('pornhub.com').blocked, true, 'turning it on is instant');
+  assert.deepEqual(core.snapshot().filterLog.map((e) => e.kind), ['off', 'on']);
+});
+
+test('adult filter: state survives a restart and /state reports it to the extension', async () => {
+  const a = mk();
+  a.core.requestUnlock({ type: 'filter' }); a.adv(301_000);
+  a.core.confirmUnlock({ type: 'filter', reason: 'need it off for a legitimate reason' });
+  const b = createCore({ dataDir: a.dir, now: () => a.clock.t, dnd: { on() {}, off() {} }, listProcs: () => [] });
+  assert.equal(b.getSettings().adultFilter, false);
+  assert.equal(b.snapshot().filterLog.length, 1);
+  await b.start();
+  try {
+    const st = await call(b.getPort(), b.getToken(), 'GET', '/state');
+    assert.equal(st.json.adultFilter, false);
+    b.turnFilterOn();
+    assert.equal((await call(b.getPort(), b.getToken(), 'GET', '/state')).json.adultFilter, true);
+  } finally { b.stop(); }
 });

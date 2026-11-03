@@ -30,7 +30,7 @@ api.onBlocked((b) => toast(`Blocked ${b.target} – back to work`));
 api.onEnded((sum) => { summary = sum; closeModal(); render(); });
 api.snap().then((s) => { S = s; skew = s.now - Date.now(); render(); });
 
-const keyOf = (s) => (s.session ? 'S' : summary ? 'U' : 'H' + tab) + (s.extensionConnected ? 'c' : 'x');
+const keyOf = (s) => (s.session ? 'S' : summary ? 'U' : 'H' + tab) + (s.extensionConnected ? 'c' : 'x') + (s.settings.adultFilter ? 'f' : 'n');
 function render() {
   if (!S) return;
   document.body.classList.toggle('session', !!S.session);
@@ -56,6 +56,7 @@ function viewFocus(v) {
   const presets = [25, 45, 60, 90, 120];
   const days = S.stats.days, max = Math.max(30, ...days.map((d) => d.focusMin));
   v.innerHTML = `
+    ${S.settings.adultFilter ? '' : `<div class="banner"><div><b>The adult site filter is OFF.</b> Porn and erotic sites are not being blocked.</div><button class="btn sm" id="filterOnBtn">Turn it on</button></div>`}
     ${S.extensionConnected ? '' : `<div class="banner"><div><b>Website blocking is off.</b> Connect the Chrome extension so Anchor can block sites (takes 2 minutes).</div><button class="btn ghost sm" id="setupExt">Set up</button></div>`}
     <div class="card start">
       <h1>What will you finish in this session?</h1>
@@ -80,6 +81,7 @@ function viewFocus(v) {
   $('customMin').onchange = (e) => { const n = Math.round(+e.target.value); if (n >= 5 && n <= 240) { draft.minutes = n; draft.goal = goal.value; render(); } };
   v.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => { draft.mode = b.dataset.mode; draft.goal = goal.value; render(); }));
   const se = $('setupExt'); if (se) se.onclick = () => { tab = 'settings'; render(); };
+  const fo = $('filterOnBtn'); if (fo) fo.onclick = async () => { const r = await api.filterOn(); if (!r.ok) toast(r.error, true); else toast('Adult site filter is on'); };
   const go = async () => {
     const r = await api.start({ goal: goal.value, minutes: draft.minutes ?? st.defaultMinutes, mode: draft.mode ?? st.mode });
     if (!r.ok) return toast(r.error, true);
@@ -150,8 +152,13 @@ async function viewSettings(v) {
   if (!extBrowser) extBrowser = /firefox/.test(info.defaultBrowser || '') ? 'firefox' : 'chrome';
   const num = (id, label, sub, val, min, max) => `<div class="setting"><div>${label}<small>${sub}</small></div><input type="number" class="num" id="${id}" min="${min}" max="${max}" value="${val}"></div>`;
   v.innerHTML = `
+    <div class="card"><div class="row spread"><h3>Adult site filter</h3><span class="pill ${st.adultFilter ? 'ok' : 'warn'}"><span class="dot"></span>${st.adultFilter ? 'On' : 'Off'}</span></div>
+      <p class="hint">Blocks porn and erotic sites in your browser <b>all the time</b>, not just during sessions (needs the browser extension below). It keeps blocking even if Anchor is closed. Turning it off takes a long wait and a written reason; turning it on is instant.</p>
+      <div class="row" style="margin-top:12px">${st.adultFilter ? '<button class="btn ghost sm" id="filterOff">Turn off…</button>' : '<button class="btn sm" id="filterOnS">Turn on</button>'}</div>
+      ${(S.filterLog || []).length ? `<ul class="flog">${S.filterLog.slice(-5).reverse().map((e) => `<li>${esc(fmtDate(e.at))} – turned ${esc(e.kind)}${e.reason ? ': “' + esc(e.reason) + '”' : ''}</li>`).join('')}</ul>` : ''}</div>
     <div class="card"><h3>Session rules</h3>
       ${num('cooldownSec', 'Wait before unlocking', 'Seconds you must wait (and then explain why) to open a blocked site, unlock an app or end a session early.', st.cooldownSec, 30, 600)}
+      ${num('filterWaitSec', 'Wait to turn the adult filter off', 'Seconds. Can only be raised while the filter is on.', st.filterWaitSec, 60, 1800)}
       ${num('maxBreaks', 'Breaks per session', 'Each break pauses blocking and adds its time to the session.', st.maxBreaks, 0, 5)}
       ${num('breakMin', 'Break length (minutes)', '', st.breakMin, 1, 15)}
       ${num('defaultMinutes', 'Default session length (minutes)', '', st.defaultMinutes, 5, 240)}
@@ -177,8 +184,10 @@ async function viewSettings(v) {
         <p class="hint">The signed file contains this app's private connection key, so keep it to yourself. Needs Firefox 128 or newer.</p></details>
       <div class="row" style="margin-top:14px"><button class="btn ghost sm" id="openFirefox">Open Firefox add-on page</button><button class="btn ghost sm" id="copyDir">Copy folder path</button><button class="btn ghost sm" id="revealDir">Show folder</button></div>`}</div>
     <div class="card"><h3>About</h3><p class="hint">Anchor is a self-control aid, not a security tool: it helps you resist impulses, but you can still quit it from outside (for example with a terminal). Everything stays on this computer.</p></div>`;
-  ['cooldownSec', 'maxBreaks', 'breakMin', 'defaultMinutes'].forEach((id) => ($(id).onchange = async (e) => { const r = await api.setSettings({ [id]: +e.target.value }); if (!r.ok) toast(r.error, true); else S.settings = r.data; }));
+  ['cooldownSec', 'filterWaitSec', 'maxBreaks', 'breakMin', 'defaultMinutes'].forEach((id) => ($(id).onchange = async (e) => { const r = await api.setSettings({ [id]: +e.target.value }); if (!r.ok) toast(r.error, true); else S.settings = r.data; }));
   v.querySelectorAll('[data-dnd]').forEach((b) => (b.onclick = async () => { const r = await api.setSettings({ dnd: b.dataset.dnd === '1' }); if (r.ok) { S.settings = r.data; render(); } }));
+  { const off = $('filterOff'); if (off) off.onclick = () => cooldownModal({ type: 'filter', target: 'adult', title: 'Turn off the adult filter?', intro: 'This is deliberately slow. If it is an impulse, it will pass. Otherwise wait, and write why.', confirm: 'Turn off', minReason: 20 });
+    const on = $('filterOnS'); if (on) on.onclick = async () => { const r = await api.filterOn(); if (!r.ok) toast(r.error, true); }; }
   v.querySelectorAll('[data-br]').forEach((b) => (b.onclick = () => { extBrowser = b.dataset.br; render(); }));
   const oc = $('openChrome'); if (oc) oc.onclick = async () => { if (!(await api.extOpenChrome())) toast('Could not start Chrome – open chrome://extensions yourself.', true); };
   const of = $('openFirefox'); if (of) of.onclick = async () => { if (!(await api.extOpenFirefox())) toast('Could not start Firefox – open about:debugging#/runtime/this-firefox yourself.', true); };
@@ -241,12 +250,12 @@ function openAppUnlock() {
   $('mcancel').onclick = closeModal;
   ov.querySelectorAll('[data-app]').forEach((b) => (b.onclick = () => { const a = b.dataset.app; ov.remove(); cooldownModal({ type: 'app', target: a, title: `Unlock ${a}?`, intro: 'It stays unlocked for the time you choose.', confirm: 'Unlock', minutes: true, keepSize: true }); }));
 }
-async function cooldownModal({ type, target, title, intro, confirm, minutes, keepSize }) {
+async function cooldownModal({ type, target, title, intro, confirm, minutes, keepSize, minReason = 10 }) {
   if (!keepSize) api.modal(true);
   const ov = document.createElement('div'); ov.className = 'overlay'; ov.id = 'overlay';
   ov.innerHTML = `<div class="modal"><h3>${esc(title)}</h3><p>${esc(intro)}</p>
     <div class="wait"><b id="mcount">…</b><span>seconds to wait</span></div>
-    <textarea id="mreason" rows="3" maxlength="300" placeholder="Why? (at least 10 characters)"></textarea>
+    <textarea id="mreason" rows="3" maxlength="300" placeholder="Why? (at least ${minReason} characters)"></textarea>
     ${minutes ? '<select id="mmins" style="margin-top:10px"><option value="5">for 5 minutes</option><option value="10" selected>for 10 minutes</option><option value="20">for 20 minutes</option></select>' : ''}
     <div class="err" id="merr"></div>
     <div class="row" style="justify-content:flex-end;margin-top:8px"><button class="btn ghost sm" id="mcancel">Never mind</button><button class="btn sm" id="mgo" disabled>${esc(confirm)}</button></div></div>`;
@@ -258,7 +267,7 @@ async function cooldownModal({ type, target, title, intro, confirm, minutes, kee
   const upd = () => {
     const left = Math.ceil((readyAt - Date.now()) / 1000);
     $('mcount').textContent = Math.max(0, left);
-    $('mgo').disabled = left > 0 || $('mreason').value.trim().length < 10;
+    $('mgo').disabled = left > 0 || $('mreason').value.trim().length < minReason;
   };
   clearInterval(modalTimer); modalTimer = setInterval(upd, 250); upd();
   $('mreason').oninput = upd; $('mreason').focus();

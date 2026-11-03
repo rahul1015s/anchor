@@ -78,7 +78,7 @@ function defaultDnd(dir) {
   const get = () => { try { return execFileSync('gsettings', ['get', ...DND_KEY], { encoding: 'utf8', timeout: 3000 }).trim(); } catch { return null; } };
   const set = (v) => { try { execFileSync('gsettings', ['set', ...DND_KEY, v], { timeout: 3000 }); return true; } catch { return false; } };
   return {
-    on() { const cur = get(); if (cur === null) return false; if (!fs.existsSync(file)) fs.writeFileSync(file, cur); set('false'); return true; },
+    on() { const cur = get(); if (cur === null) return false; if (cur === 'false' && !fs.existsSync(file)) return false; /* already muted by someone else (e.g. Playlearn): leave it alone */ if (!fs.existsSync(file)) fs.writeFileSync(file, cur); set('false'); return true; },
     off() { if (!fs.existsSync(file)) return; const v = fs.readFileSync(file, 'utf8').trim(); if (v === 'true' || v === 'false') set(v); fs.rmSync(file, { force: true }); },
   };
 }

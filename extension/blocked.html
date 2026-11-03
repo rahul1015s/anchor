@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blocked – Anchor</title><link rel="stylesheet" href="blocked.css"></head>
+<body>
+<main>
+  <img src="icons/icon-128.png" width="72" height="72" alt="">
+  <p class="kicker">Anchor · focus session</p>
+  <h1><span id="host">this site</span> is blocked</h1>
+  <p class="goal">Your goal: <b id="goal">…</b></p>
+  <p class="left"><span id="left">--:--</span> left in this session</p>
+  <div class="row"><button id="back" class="primary">Back to work</button><button id="need" class="ghost">I really need this site</button></div>
+  <section id="cool" hidden>
+    <p>Pause for a moment. Is this part of the goal above? You can unlock <b id="host2"></b> after the wait, with a reason.</p>
+    <div class="wait"><span id="count">60</span><small>seconds to wait</small></div>
+    <textarea id="reason" rows="3" maxlength="300" placeholder="Why do you need it right now? (at least 10 characters)"></textarea>
+    <div class="row"><select id="mins"><option value="5">for 5 minutes</option><option value="10" selected>for 10 minutes</option><option value="20">for 20 minutes</option></select>
+    <button id="go" class="ghost" disabled>Unlock</button></div>
+    <p id="err" class="err"></p>
+  </section>
+  <p id="offline" class="err" hidden>The Anchor app is not running, so nothing is blocked. You can reload this page.</p>
+</main>
+<script src="blocked.js"></script></body></html>

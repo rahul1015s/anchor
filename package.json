@@ -1,0 +1,49 @@
+{
+  "name": "anchor-focus",
+  "productName": "Anchor",
+  "version": "0.1.0",
+  "description": "Focus guard for Linux: start a session with one goal and block distracting sites and apps until it ends",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js"
+  },
+  "license": "MIT",
+  "author": "rahul1015s",
+  "keywords": [
+    "focus",
+    "productivity",
+    "website-blocker",
+    "pomodoro",
+    "linux",
+    "electron",
+    "fedora"
+  ],
+  "devDependencies": {
+    "electron": "^45.2.1"
+  },
+  "bin": {
+    "anchor": "bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "main.js",
+    "core.js",
+    "preload.js",
+    "renderer",
+    "assets",
+    "extension",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "linux"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rahul1015s/anchor.git"
+  }
+}
